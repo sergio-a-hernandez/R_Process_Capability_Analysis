@@ -1,0 +1,6 @@
+"Métrica","Valor","Interpretación"
+"Cp",9.50163398692831,NA
+"Cpk",6.6617856209152,"Cumple criterios de aceptacion"
+"Pp",8.80178905061365,NA
+"Ppk",6.17111033916621,"Cumple criterios de aceptacion"
+"p-value",0.243595154507318,"Distribución normal (no se rechaza la hipótesis nula)."

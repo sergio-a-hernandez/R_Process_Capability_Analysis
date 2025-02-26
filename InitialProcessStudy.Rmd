@@ -1,0 +1,298 @@
+---
+title: "Análisis de Capacidad del Proceso"
+author: "Sergio A. Hernandez"
+output: html_notebook
+---
+
+## Instrucciones de uso
+1. Coloca los archivos `datos_proceso.csv` y `limites.csv` en el mismo directorio que este notebook.
+2. Ejecuta todas las celdas del notebook en orden.
+3. Revisa los resultados en las tablas y gráficos generados.
+4. Si deseas exportar los resultados, modifica las opciones de exportación al final del notebook.
+
+## Introducción
+Este notebook realiza un análisis de capacidad del proceso para datos organizados en **subgrupos de tamaño 5**, calculando los índices **Pp**, **Ppl**, **Ppu**, **Exp<LSL**, **Exp>USL**, **Obs<LSL** y **Obs>USL**, evaluando la normalidad de los datos mediante una prueba de Shapiro-Wilk, y generando los gráficos de control **X-barra**, **R**, un **Normal Probability Plot** y una gráfica de **Process Capability Analysis**. Los datos se cargan desde un archivo CSV llamado `"datos_proceso.csv"`, y los límites de especificación se cargan desde un archivo CSV llamado `"limites.csv"`.
+
+---
+
+## 1. Instalar y cargar librerías necesarias
+Primero, instalamos y cargamos las librerías necesarias para el análisis.
+
+```{r}
+# Cambiar el working directory al directorio del archivo .Rmd
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+# Verificar e instalar paquetes (si no están instalados)
+if (!require(qcc, quietly = TRUE)) {
+  install.packages("qcc")
+}
+
+if (!require(kableExtra, quietly = TRUE)) {
+  install.packages("kableExtra")
+}
+
+# Cargar librerías
+library(qcc)    # Para calcular Cp, Cpk, Pp, Ppk y generar gráficos de control
+library(kableExtra) # Para generar tablas más elegantes en el notebook
+```
+
+## 2. Cargar datos desde un archivo CSV
+Cargamos los datos desde el archivo CSV. Asegúrate de que el archivo "datos_proceso.csv" esté en el directorio de trabajo o proporciona la ruta completa.
+
+```{r}
+# Especifica el nombre del archivo CSV
+archivo_csv <- "datos_proceso.csv"  # Cambia esto por el nombre de tu archivo
+
+# Verificar si el archivo de datos existe
+if (!file.exists(archivo_csv)) {
+  stop("El archivo de datos del proceso no existe en el directorio actual.")
+}
+
+# Leer el archivo CSV
+datos <- read.csv(archivo_csv)
+
+# Ver las primeras filas de los datos
+head(datos)
+
+# Extraer la columna de mediciones (ajusta el nombre de la columna según tu archivo)
+mediciones <- datos$mediciones  # Cambia "mediciones" por el nombre de tu columna
+```
+
+### 3. Organizar los datos en subgrupos de tamaño 5
+Puesto que  los datos están en un vector plano, los reorganizamos en subgrupos de tamaño 5.
+
+``` {r}
+# Reorganizar los datos en subgrupos de tamaño 5
+subgrupos <- matrix(mediciones, ncol = 5, byrow = TRUE)
+
+# Verificar la estructura de los subgrupos
+print(subgrupos)
+```
+
+## 4. Especificaciones del proceso
+Definimos los límites de especificación del proceso.
+
+```{r}
+# Verificar si el archivo de límites existe
+if (!file.exists("limites.csv")) {
+  stop("El archivo 'limites.csv' no existe en el directorio actual.")
+}
+
+# Leer el archivo CSV con los límites
+limites <- read.csv("limites.csv", stringsAsFactors = FALSE)
+
+# Extraer los valores
+LSL <- as.numeric(limites$Valor[limites$Variable == "LSL"])
+NOM <- as.numeric(limites$Valor[limites$Variable == "NOM"])
+USL <- as.numeric(limites$Valor[limites$Variable == "USL"])
+
+# Mostrar los límites cargados
+cat("Límites de especificación cargados:\n")
+cat("  LSL:", LSL, "\n")
+cat("  NOM:", NOM, "\n")
+cat("  USL:", USL, "\n")
+```
+
+## 5. Crear un objeto qcc para subgrupos
+Creamos un objeto qcc para los subgrupos de tamaño 5.
+
+``` {r}
+# Crear un objeto qcc (usando un gráfico de medias como ejemplo)
+qcc_obj <- qcc(subgrupos, type = "xbar", nsigmas = 3, plot = FALSE)
+```
+
+## 6. Calcular Cp y Cpk
+Usamos la función process.capability con el objeto qcc para calcular los índices de capacidad.
+
+```{r}
+proceso <- process.capability(qcc_obj, spec.limits = c(LSL, USL))
+print(proceso)
+names(proceso$indices)
+Cp <- proceso$indices[1]
+Cpk <- proceso$indices[4]
+```
+## 7. Calcular Pp y Ppk
+Calculamos los índices Pp y Ppk utilizando la desviación estándar total de los datos.
+
+``` {r}
+# Calcular la media y la desviación estándar total de los datos
+media_total <- mean(mediciones)
+desviacion_total <- sd(mediciones)
+
+calcular_indices <- function(media, desviacion, LSL, USL) {
+  Pp <- (USL - LSL) / (6 * desviacion)
+  Ppl <- (media - LSL) / (3 * desviacion)
+  Ppu <- (USL - media) / (3 * desviacion)
+  Ppk <- min(Ppl, Ppu)
+  return(list(Pp = Pp, Ppl = Ppl, Ppu = Ppu, Ppk = Ppk))
+}
+
+# Calcular los índices
+indices <- calcular_indices(media_total, desviacion_total, LSL, USL)
+Pp <- indices$Pp
+Ppl <- indices$Ppl
+Ppu <- indices$Ppu
+Ppk <- indices$Ppk
+
+# Calcular Exp<LSL y Exp>USL
+Exp_LSL <- pnorm(LSL, mean = media_total, sd = desviacion_total) * 100
+Exp_USL <- (1 - pnorm(USL, mean = media_total, sd = desviacion_total)) * 100
+
+# Calcular Obs<LSL y Obs>USL
+Obs_LSL <- sum(mediciones < LSL) / length(mediciones) * 100
+Obs_USL <- sum(mediciones > USL) / length(mediciones) * 100
+
+# Crear un data frame con los resultados
+resumen_pp <- data.frame(
+  Índice = c("Pp", "Ppl", "Ppu", "Ppk", "Exp<LSL", "Exp>USL", "Obs<LSL", "Obs>USL"),
+    Valor = c(
+    round(Pp, 3),
+    round(Ppl, 3),
+    round(Ppu, 3),
+    round(Ppk, 3),
+    sprintf("%.3f%%", Exp_LSL),
+    sprintf("%.3f%%", Exp_USL),
+    sprintf("%.3f%%", Obs_LSL),
+    sprintf("%.3f%%", Obs_USL)
+  )
+)
+
+# Mostrar el resumen
+print(resumen_pp)
+```
+
+## 8. Prueba de normalidad
+Realizamos una prueba de Shapiro-Wilk para evaluar si los datos siguen una distribución normal.
+
+```{r}
+# Calcular las medias de los subgrupos
+medias_subgrupos <- apply(subgrupos, 1, mean)
+
+# Prueba de Shapiro-Wilk sobre las medias de los subgrupos
+shapiro_test <- shapiro.test(medias_subgrupos)
+p_value <- shapiro_test$p.value
+
+# Interpretación del p-value
+if (p_value > 0.05) {
+  cat("  Las medias de los subgrupos siguen una distribución normal (no se rechaza la hipótesis nula).\n")
+} else {
+  cat("  Las medias de los subgrupos NO siguen una distribución normal (se rechaza la hipótesis nula).\n")
+}
+``` 
+
+## 9. Visualización de los datos
+
+### Gráfica de Process Capability Analysis
+Generamos una gráfica de Process Capability Analysis con el histograma, las líneas Within y Overall.
+
+``` {r}
+# Calcular la desviación estándar dentro de los subgrupos (Within)
+# Esta desviación estándar se utiliza para calcular los índices Cp y Cpk.
+desviacion_within <- qcc_obj$std.dev
+
+# Crear un rango de valores para el eje X
+x <- seq(LSL - 5, USL + 5, length.out = 1000)
+
+# Calcular las densidades de las distribuciones normales
+densidad_within <- dnorm(x, mean = media_total, sd = desviacion_within)
+densidad_overall <- dnorm(x, mean = media_total, sd = desviacion_total)
+
+# Guardar el gráfico de Process Capability Analysis en un archivo PNG
+png("process_capability_analysis.png", width = 800, height = 600)
+
+# Graficar el histograma
+hist(mediciones, breaks = 15, freq = FALSE, col = "lightblue", border = "black",
+     main = "Process Capability Analysis",
+     xlab = "Valores", ylab = "Densidad",
+     xlim = c(LSL - 5, USL + 5), ylim = c(0, max(densidad_overall, densidad_within)))
+
+# Superponer las curvas de densidad
+lines(x, densidad_overall, col = "blue", lwd = 2)  # Overall
+lines(x, densidad_within, col = "red", lwd = 2)   # Within
+
+# Agregar líneas para los límites de especificación
+abline(v = c(LSL, USL), col = "black", lty = 2)
+
+# Agregar una leyenda
+legend("topright", legend = c("Overall", "Within"), col = c("blue", "red"), lwd = 2)
+dev.off()
+```
+
+### Gráficos de control X-barra y R
+Generamos los gráficos de control X-barra y R para monitorear la estabilidad del proceso.
+
+``` {R}
+# Gráfico X-barra (medias de los subgrupos)
+xbar_chart <- qcc(subgrupos, type = "xbar", nsigmas = 3, plot = TRUE, title = "Gráfico X-Barra")
+
+# Gráfico R (rangos de los subgrupos)
+r_chart <- qcc(subgrupos, type = "R", nsigmas = 3, plot = TRUE, title = "Gráfico R")
+```
+
+### Histograma y un gráfico de densidad
+Generamos un histograma y un gráfico de densidad para visualizar la distribución de los datos.
+
+```{r}
+hist(medias_subgrupos, breaks = 15, main = "Histograma de las medias de los subgrupos", xlab = "Valores", col = "lightblue", border = "black")
+lines(density(medias_subgrupos), col = "red", lwd = 2)  # Agregar curva de densidad
+abline(v = c(LSL, USL), col = "blue", lty = 2)  # Líneas para los límites de especificación
+legend("topright", legend = c("LSL", "USL"), col = "blue", lty = 2)
+```
+
+### Normal Probability Plot
+Generamos un Normal Probability Plot para evaluar visualmente la normalidad de los datos.
+
+``` {r}
+# Normal Probability Plot
+qqnorm(mediciones, main = "Normal Probability Plot", xlab = "Cuantiles teóricos", ylab = "Cuantiles de los datos")
+qqline(mediciones, col = "red")  # Agregar línea de referencia
+```
+
+## 10. Resumen de resultados
+Creamos un resumen de los resultados (Cp, Cpk, Pp, Ppk y prueba de normalidad) en un data frame, incluyendo una columna de interpretación.
+
+``` {r}
+# Función para interpretar Cpk y Ppk
+interpretar_cpk_ppk <- function(valor) {
+  if (valor > 1.67) {
+    return("Cumple criterios de aceptacion")
+  } else if (valor >= 1.33 & valor <= 1.67) {
+    return("Require un plan de accion")
+  } else {
+    return("No cumple criterios de aceptacion")
+  }
+}
+
+# Función para interpretar el p-value de la prueba de normalidad
+interpretar_p_value <- function(p_value) {
+  if (p_value > 0.05) {
+    return("Distribución normal (no se rechaza la hipótesis nula).")
+  } else {
+    return("No distribución normal (se rechaza la hipótesis nula).")
+  }
+}
+
+# Crear un data frame con los resultados
+resumen <- data.frame(
+  Métrica = c("Cp", "Cpk", "Pp", "Ppk", "p-value"),
+  Valor = c(Cp, Cpk, Pp, Ppk, p_value),
+  Interpretación = c(
+    NA,  # Cp no tiene interpretación específica
+    interpretar_cpk_ppk(Cpk),
+    NA,  # Pp no tiene interpretación específica
+    interpretar_cpk_ppk(Ppk),
+    interpretar_p_value(p_value)
+  )
+)
+
+# Mostrar el resumen
+print(resumen)
+
+resumen %>%
+  kable("html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+# Guardar el resumen en un archivo CSV
+write.csv(resumen, file = "resumen_capacidad.csv", row.names = FALSE)
+
+```
