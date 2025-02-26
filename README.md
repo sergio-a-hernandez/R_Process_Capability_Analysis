@@ -129,5 +129,3 @@ Si tienes alguna pregunta o sugerencia, no dudes en contactarme:
 [GitHub - Análisis de Capacidad de Procesos](https://github.com/sergio-a-hernandez/R_Process_Capability_Analysis)
 
 ---
-
-Este **README.md** es claro, informativo y proporciona todo lo necesario para que los usuarios puedan entender y utilizar tu proyecto. ¡Espero que sea útil! 😊
